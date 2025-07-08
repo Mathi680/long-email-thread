@@ -1,0 +1,68 @@
+import streamlit as st
+import google.generativeai as genai
+import requests
+
+# Load API keys securely from Streamlit secrets
+GEMINI_API_KEY = "AIzaSyDyMbL3TiObQ2Fl9l9XmTTpdBs0eNhX9VI"
+N8N_WEBHOOK_URL = "https://mathiyarasi680.app.n8n.cloud/webhook-test/4d7c49d6-d415-4141-831a-50b3d880925e"
+
+# Configure Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("models/gemini-2.0-flash")
+
+# Streamlit UI
+st.title("📧 Email Assistant (Gemini + n8n)")
+st.write("Paste a long email thread, and we'll summarize, extract action items, and generate a reply.")
+
+email_thread = st.text_area("Paste your email thread", height=300)
+tone = st.selectbox("Choose response tone", ["Professional", "Casual", "Assertive"])
+
+if st.button("Summarize & Generate Response"):
+    if not email_thread.strip():
+        st.warning("Please enter an email thread.")
+    else:
+        with st.spinner("Analyzing with Gemini..."):
+
+            # Step 1: Summarize and extract action items
+            prompt_summary = f"""
+You are a helpful assistant. Here's an email thread:
+{email_thread}
+
+1. Summarize the thread.
+2. Extract clear, bullet-point action items.
+"""
+
+            summary_response = model.generate_content(prompt_summary)
+            summary_text = summary_response.text.strip()
+
+            # Step 2: Generate reply in selected tone
+            prompt_reply = f"""
+Based on the email thread above, write a clear and concise reply in a {tone.lower()} tone.
+Ensure the tone is appropriate for business communication.
+"""
+            reply_response = model.generate_content(prompt_reply)
+            reply_text = reply_response.text.strip()
+
+            # Display results
+            st.subheader("📝 Summary & Action Items")
+            st.markdown(summary_text)
+
+            st.subheader("✉️ Suggested Reply")
+            st.markdown(reply_text)
+
+            # Step 3: Send to n8n webhook
+            payload = {
+                "summary": summary_text,
+                "reply": reply_text,
+                "tone": tone,
+                "original_thread": email_thread
+            }
+
+            try:
+                webhook_response = requests.post(N8N_WEBHOOK_URL, json=payload)
+                if webhook_response.status_code == 200:
+                    st.success("✅ Sent to n8n webhook successfully!")
+                else:
+                    st.error(f"❌ Webhook failed: {webhook_response.status_code}")
+            except Exception as e:
+                st.error(f"Error sending to webhook: {e}")
